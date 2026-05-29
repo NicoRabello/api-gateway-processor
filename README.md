@@ -1,59 +1,226 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# API Gateway Log Processor
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Processador CLI em Laravel para arquivos NDJSON gerados por API Gateway. O sistema le logs linha a linha, persiste os campos relevantes no MySQL e gera relatorios CSV a partir do banco.
 
-## About Laravel
+## Tecnologias
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- PHP 8.3
+- Laravel 12
+- MySQL 8
+- Docker
+- Docker Compose
+- PHPUnit
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Arquitetura
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- `Console/Commands`: entrada CLI, apenas orquestracao.
+- `Services`: validacao de arquivo, parser, processamento e geracao de relatorios.
+- `Repositories`: persistencia e consultas agregadas.
+- `Exporters`: escrita dos CSVs.
+- `DTOs`: transporte dos dados parseados e do resumo de processamento.
+- `Models`: representacao Eloquent da tabela principal.
 
-## Learning Laravel
+## Estrutura
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+```text
+app/
+  Console/Commands
+  DTOs
+  Exporters
+  Models
+  Repositories
+  Services
+database/migrations
+tests/Feature
+tests/Unit
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Instalação com Docker
 
-## Laravel Sponsors
+Suba os containers:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+docker compose up -d
+```
 
-### Premium Partners
+Gere a chave da aplicacao, se necessario:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```bash
+docker compose exec app php artisan key:generate
+```
 
-## Contributing
+Execute as migrations:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+docker compose exec app php artisan migrate
+```
 
-## Code of Conduct
+## Processar Logs
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+O caminho do arquivo deve existir dentro do container. Uma forma simples e colocar o arquivo no diretorio do projeto, que e montado em `/var/www/html`.
 
-## Security Vulnerabilities
+```bash
+docker compose exec app php artisan logs:process /var/www/html/logs.txt
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+O comando:
 
-## License
+- valida se o arquivo existe e e legivel;
+- le o NDJSON linha a linha;
+- persiste registros validos em lotes para reduzir escritas no banco;
+- usa checkpoint por arquivo para pular linhas ja processadas em execucoes seguintes;
+- ignora linhas JSON invalidas sem parar todo o processamento;
+- grava `started_at` a partir do log;
+- grava `processed_at` no momento da insercao;
+- ignora duplicados pelo indice unico composto por arquivo, linha e hash do payload;
+- mostra contadores de processados, inseridos, ignorados e invalidos.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Gerar Relatórios
+
+Tipos disponiveis:
+
+- `consumers`: total de requisicoes por `consumer_id`;
+- `services`: total de requisicoes por `service_name`;
+- `latencies`: media de `request_latency`, `proxy_latency` e `gateway_latency` por servico.
+
+Gerar todos:
+
+```bash
+docker compose exec app php artisan reports:generate
+```
+
+Gerar por tipo:
+
+```bash
+docker compose exec app php artisan reports:generate consumers
+docker compose exec app php artisan reports:generate services
+docker compose exec app php artisan reports:generate latencies
+```
+
+Diretorio de saida customizado:
+
+```bash
+docker compose exec app php artisan reports:generate latencies --output=storage/app/reports
+```
+
+## Testes
+
+Localmente:
+
+```bash
+php artisan test
+```
+
+Via Docker:
+
+```bash
+docker compose exec app php artisan test
+```
+
+## Banco de Dados
+
+Tabela principal: `processed_logs`.
+
+Campos principais:
+
+- `consumer_id`
+- `service_id`
+- `service_name`
+- `request_method`
+- `request_uri`
+- `response_status`
+- `request_latency`
+- `proxy_latency`
+- `gateway_latency`
+- `client_ip`
+- `started_at`
+- `processed_at`
+- `payload_hash`
+- `source_file_hash`
+- `source_file`
+- `line_number`
+- `created_at`
+- `updated_at`
+
+Tabela de controle incremental: `import_checkpoints`.
+
+Campos principais:
+
+- `source_file_hash`
+- `source_file`
+- `last_processed_line`
+- `created_at`
+- `updated_at`
+
+Indices:
+
+- indice unico composto por `source_file_hash`, `line_number` e `payload_hash`;
+- `payload_hash`;
+- `consumer_id`;
+- `service_name`;
+- `service_id`;
+- `started_at`;
+- `processed_at`;
+
+## Decisões Técnicas
+
+### Processamento incremental
+
+O arquivo e processado com `SplFileObject`, uma linha por vez. O sistema nao usa `file_get_contents()` para carregar o arquivo inteiro. Registros validos sao persistidos em lotes, e a tabela `import_checkpoints` armazena a ultima linha confirmada por arquivo para pular linhas ja processadas em execucoes seguintes.
+
+### Duplicidade
+
+Cada linha gera um `payload_hash` SHA-256. A deduplicacao usa chave unica composta por `source_file_hash`, `line_number` e `payload_hash`, evitando duplicidade no reprocessamento do mesmo arquivo sem descartar eventos legitimos com payload identico em linhas diferentes.
+
+### Relatórios
+
+Todos os CSVs sao gerados a partir do MySQL. As agregacoes usam `GROUP BY` e funcoes nativas de banco. A escrita do CSV e feita por streaming, sem montar todo o arquivo em memoria.
+
+### Segurança
+
+- O caminho do arquivo e validado antes da leitura.
+- JSON invalido e contabilizado como invalido.
+- Queries usam Query Builder.
+- Exportacao CSV sanitiza valores iniciados por `=`, `+`, `-` ou `@`.
+- Credenciais ficam em variaveis de ambiente.
+
+## Troubleshooting
+
+Banco ainda iniciando:
+
+```bash
+docker compose ps
+```
+
+Recriar banco local:
+
+```bash
+docker compose exec app php artisan migrate:fresh
+```
+
+Arquivo nao encontrado:
+
+- confirme se o caminho existe dentro do container;
+- se o arquivo esta na raiz do projeto, use `/var/www/html/nome-do-arquivo`.
+
+Dependencias ausentes no container:
+
+```bash
+docker compose exec app composer install
+```
+
+Servico `app` nao esta rodando apos mudancas no Dockerfile:
+
+```bash
+docker compose build app
+docker compose run --rm --user root app composer install
+docker compose up -d
+```
+
+## Melhorias Futuras
+
+- Checkpoint por offset para retomar arquivos parcialmente processados com menos releitura.
+- Inserts em lote para cargas muito grandes.
+- Filtros por periodo nos relatorios.
+- Agendamento automatico do processamento.
+- Observabilidade com metricas de tempo e throughput.

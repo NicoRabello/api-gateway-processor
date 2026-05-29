@@ -1,0 +1,11 @@
+.git
+.github
+.codex
+node_modules
+vendor
+storage/logs/*
+storage/app/reports/*
+.env
+.phpunit.result.cache
+*.log
+logs.txt
