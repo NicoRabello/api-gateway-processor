@@ -30,7 +30,7 @@ class ProcessedLogRepository
         return DB::table('processed_logs')->insertOrIgnore(array_map(
             fn (ParsedGatewayLog $log): array => [
                 'payload_hash' => $log->payloadHash,
-                'source_file_hash' => hash('sha256', $log->sourceFile),
+                'source_file_hash' => $log->sourceFileHash,
                 'source_file' => $log->sourceFile,
                 'line_number' => $log->lineNumber,
                 'consumer_id' => $log->consumerId,

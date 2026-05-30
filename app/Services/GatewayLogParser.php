@@ -12,7 +12,7 @@ class GatewayLogParser
     /**
      * @throws JsonException|InvalidArgumentException
      */
-    public function parse(string $line, string $sourceFile = '', int $lineNumber = 0): ParsedGatewayLog
+    public function parse(string $line, string $sourceFile = '', int $lineNumber = 0, ?string $sourceFileHash = null): ParsedGatewayLog
     {
         $payload = trim($line);
 
@@ -24,6 +24,7 @@ class GatewayLogParser
 
         return new ParsedGatewayLog(
             payloadHash: hash('sha256', $payload),
+            sourceFileHash: $sourceFileHash ?? hash('sha256', $sourceFile),
             sourceFile: $sourceFile,
             lineNumber: $lineNumber,
             consumerId: $this->uuidValue($this->firstStringValue($data, [

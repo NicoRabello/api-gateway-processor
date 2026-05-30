@@ -8,6 +8,7 @@ final readonly class ParsedGatewayLog
 {
     public function __construct(
         public string $payloadHash,
+        public string $sourceFileHash,
         public string $sourceFile,
         public int $lineNumber,
         public ?string $consumerId,
