@@ -1,0 +1,130 @@
+prompt 1:
+Analise este projeto Laravel/PHP e compare o código atual com os critérios de aceite abaixo. 
+Não altere arquivos ainda. Aponte lacunas funcionais, problemas de arquitetura, riscos de performance, riscos de persistência e ausência de testes.
+
+Critérios:
+- Processar logs NDJSON de forma incremental.
+- Persistir started_at/created_at como data original do log.
+- Persistir processed_at como data real de inserção.
+- Gerar CSV por consumidor, por serviço e média de latências por serviço.
+- Usar MySQL.
+- Projeto dockerizado.
+- README com execução via Docker.
+- Testes automatizados.
+
+prompt 2:
+Revise a implementação atual do processamento incremental de logs. 
+Verifique se o sistema evita reprocessamento, se lida com arquivo truncado/sobrescrito, se não carrega o arquivo inteiro em memória e se consegue retomar a leitura corretamente.
+
+Sugira uma solução com checkpoint persistido contendo linha, offset em bytes e hash do prefixo processado.
+Não implemente ainda; primeiro descreva os arquivos que seriam alterados.
+
+prompt 3:
+Verifique se a persistência respeita a regra de datas:
+- started_at vem do payload do gateway.
+- created_at deve receber o mesmo valor de started_at por exigência do desafio.
+- processed_at deve ser gerado no momento da inserção no banco.
+
+Se houver divergência, aponte possiveis melhorias para a camada de repository/persistencia.
+
+prompt 4:
+Revise o parser de logs NDJSON.
+Garanta que:
+- JSON inválido seja contabilizado como linha inválida.
+- JSON válido mas não objeto, como null, string, número ou array, seja rejeitado.
+- Campos opcionais ausentes não quebrem o processamento.
+- Latências request, proxy e gateway sejam extraídas corretamente.
+- consumer_id e service.name sejam mapeados corretamente.
+
+Caso exista algum item que não esteja em conformidade, aponte o item e sugira melhoria.
+
+prompt 5:
+Revise a implementação da geração de relatorios CSV e indique possiveis melhorias.
+
+Relatórios obrigatórios:
+- total de requisições agrupadas por consumer_id;
+- total de requisições agrupadas por service.name;
+- média de latência request, proxy e gateway agrupada por serviço.
+
+Garanta que a escrita do CSV seja feita por streaming e que os valores sejam sanitizados contra CSV injection.
+Adicione testes de feature validando os nomes dos arquivos e o conteúdo gerado.
+
+prompt 6:
+Analise o processamento de logs sob a ótica de performance e uso de memória.
+Verifique:
+- leitura streaming;
+- insert em lote;
+- batch size configurável por variável de ambiente;
+- índices necessários para deduplicação e relatórios;
+- métricas de duração, throughput e pico de memória no comando CLI.
+
+Sugira melhorias conservadoras quando aplicável.
+
+prompt 7:
+Revise a infraestrutura Docker do projeto.
+Garanta que:
+- app rode em PHP 8.3;
+- MySQL esteja configurado no docker-compose;
+- extensões PHP necessárias estejam instaladas;
+- vendor funcione corretamente em volume Docker;
+- comandos artisan funcionem dentro do container.
+
+Em caso de divergencia com as especificacoes, retorne qual item não esta em conformidade
+
+prompt 8:
+Como technical writer, reescreva o README para facilitar o entendimento, em caso de ambiguidade, solicite explicacao antes de continuar.
+
+inclua:
+- descrição objetiva do projeto;
+- arquitetura;
+- instalação via Docker;
+- execução completa do zero;
+- comandos Linux/macOS;
+- comandos Windows PowerShell;
+- processamento de logs;
+- geração dos relatórios;
+- localização dos CSVs;
+- testes;
+- estrutura do banco;
+- decisões técnicas;
+- troubleshooting.
+
+Não invente funcionalidades que não existem no código.
+
+prompt 9:
+Faça uma revisão final do projeto utilizando as skills code reviewer, QA engineer, security engineer e performance analyst.
+
+Classifique os achados por prioridade:
+- alta;
+- média;
+- baixa.
+
+Para cada item, explique:
+- problema;
+- impacto;
+- arquivo relacionado;
+- sugestão de correção;
+- se bloqueia ou não os critérios de aceite.
+
+prompt 10:
+Compare novamente o projeto completo com os critérios de aceite.
+
+Dê uma nota de 0 a 100 para:
+- funcionalidade;
+- qualidade de código;
+- testes;
+- performance;
+- documentação;
+- infraestrutura Docker;
+
+
+prompt 11:
+utilize as seguintes skills:
+code reviewer para apontar melhorias no código atual;
+security engineer para procurar por falhas;
+qa engineer para apontar a qualidade do código;
+network performance analyst para apontar melhorias em desempenho;
+api diagnostics specialist para ajudar a melhorar o código atual;
+
+outros prompts foram utilizados, mas não foram relevantes de forma geral, como comparações entre abordagens e discussões sobre tradeoffs.
+
