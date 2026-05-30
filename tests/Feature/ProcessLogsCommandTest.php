@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\ProcessedLog;
 use App\Repositories\ProcessedLogRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -15,10 +17,15 @@ class ProcessLogsCommandTest extends TestCase
     public function test_it_processes_a_valid_file_with_one_line(): void
     {
         $file = $this->writeLogFile([$this->line()]);
+        Carbon::setTestNow(Carbon::parse('2026-05-29 20:00:00', 'UTC'));
 
-        $this->artisan('logs:process', ['path' => $file])
-            ->expectsOutput('Log processing finished.')
-            ->assertSuccessful();
+        try {
+            $this->artisan('logs:process', ['path' => $file])
+                ->expectsOutput('Log processing finished.')
+                ->assertSuccessful();
+        } finally {
+            Carbon::setTestNow();
+        }
 
         $this->assertDatabaseCount('processed_logs', 1);
 
@@ -26,7 +33,9 @@ class ProcessLogsCommandTest extends TestCase
         $this->assertSame('11111111-1111-1111-1111-111111111111', $log->consumer_id);
         $this->assertSame('billing-api', $log->service_name);
         $this->assertSame('2015-06-02 01:50:22', $log->started_at->format('Y-m-d H:i:s'));
-        $this->assertNotNull($log->processed_at);
+        $this->assertSame('2015-06-02 01:50:22', $log->created_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-29 20:00:00', $log->processed_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-29 20:00:00', $log->updated_at->format('Y-m-d H:i:s'));
         $this->assertNotSame($log->started_at->timestamp, $log->processed_at->timestamp);
     }
 
@@ -98,6 +107,22 @@ class ProcessLogsCommandTest extends TestCase
         $this->assertDatabaseCount('processed_logs', 1);
     }
 
+    public function test_it_counts_valid_non_object_json_without_stopping_processing(): void
+    {
+        $file = $this->writeLogFile([
+            'null',
+            '123',
+            '[]',
+            $this->line(),
+        ]);
+
+        $this->artisan('logs:process', ['path' => $file])
+            ->expectsOutput('Invalid lines: 3')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('processed_logs', 1);
+    }
+
     public function test_it_allows_missing_optional_fields(): void
     {
         $file = $this->writeLogFile([
@@ -121,10 +146,65 @@ class ProcessLogsCommandTest extends TestCase
 
         $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
         $this->artisan('logs:process', ['path' => $file])
-            ->expectsOutput('Ignored/skipped records: 1')
+            ->expectsOutput('Inserted records: 0')
             ->assertSuccessful();
 
         $this->assertDatabaseCount('processed_logs', 1);
+    }
+
+    public function test_appended_lines_are_processed_incrementally(): void
+    {
+        $file = $this->writeLogFile([$this->line([
+            'started_at' => 1433209822425,
+        ])]);
+
+        $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
+
+        file_put_contents($file, PHP_EOL.$this->line([
+            'authenticated_entity' => [
+                'consumer_id' => '77777777-7777-7777-7777-777777777777',
+            ],
+            'started_at' => 1433209823425,
+        ]), FILE_APPEND);
+
+        $this->artisan('logs:process', ['path' => $file])
+            ->expectsOutput('Inserted records: 1')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('processed_logs', 2);
+        $this->assertDatabaseHas('processed_logs', [
+            'consumer_id' => '77777777-7777-7777-7777-777777777777',
+            'line_number' => 2,
+        ]);
+    }
+
+    public function test_newline_terminated_file_keeps_next_appended_line_number_correct(): void
+    {
+        $directory = storage_path('framework/testing/logs');
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        $file = $directory.'/newline-terminated.ndjson';
+        file_put_contents($file, $this->line(['started_at' => 1433209822425]).PHP_EOL);
+
+        $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
+
+        file_put_contents($file, $this->line([
+            'authenticated_entity' => [
+                'consumer_id' => '99999999-9999-9999-9999-999999999999',
+            ],
+            'started_at' => 1433209823425,
+        ]), FILE_APPEND);
+
+        $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
+
+        $this->assertDatabaseHas('processed_logs', [
+            'consumer_id' => '99999999-9999-9999-9999-999999999999',
+            'line_number' => 2,
+        ]);
+        $this->assertDatabaseCount('processed_logs', 2);
     }
 
     public function test_identical_payload_on_different_lines_counts_as_distinct_events(): void
@@ -158,6 +238,44 @@ class ProcessLogsCommandTest extends TestCase
         $this->assertDatabaseCount('import_checkpoints', 0);
     }
 
+    public function test_legacy_checkpoint_without_byte_offset_is_upgraded_on_next_append(): void
+    {
+        $file = $this->writeLogFile([$this->line(['started_at' => 1433209822425])]);
+
+        $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
+
+        $sourceFileHash = hash('sha256', realpath($file));
+
+        DB::table('import_checkpoints')
+            ->where('source_file_hash', $sourceFileHash)
+            ->update([
+                'last_processed_byte_offset' => 0,
+                'processed_prefix_hash' => hash('sha256', ''),
+            ]);
+
+        file_put_contents($file, PHP_EOL.$this->line([
+            'authenticated_entity' => [
+                'consumer_id' => '12121212-1212-1212-1212-121212121212',
+            ],
+            'started_at' => 1433209823425,
+        ]), FILE_APPEND);
+
+        $this->artisan('logs:process', ['path' => $file])
+            ->expectsOutput('Inserted records: 1')
+            ->assertSuccessful();
+
+        $checkpoint = DB::table('import_checkpoints')
+            ->where('source_file_hash', $sourceFileHash)
+            ->first();
+
+        $this->assertGreaterThan(0, $checkpoint->last_processed_byte_offset);
+        $this->assertNotSame(hash('sha256', ''), $checkpoint->processed_prefix_hash);
+        $this->assertDatabaseHas('processed_logs', [
+            'consumer_id' => '12121212-1212-1212-1212-121212121212',
+            'line_number' => 2,
+        ]);
+    }
+
     public function test_overwritten_file_at_same_path_is_processed_from_the_beginning(): void
     {
         $directory = storage_path('framework/testing/logs');
@@ -184,6 +302,54 @@ class ProcessLogsCommandTest extends TestCase
             'consumer_id' => '77777777-7777-7777-7777-777777777777',
         ]);
         $this->assertDatabaseCount('processed_logs', 2);
+    }
+
+    public function test_overwritten_file_with_same_first_line_is_processed_from_the_beginning(): void
+    {
+        $directory = storage_path('framework/testing/logs');
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        $firstLine = $this->line(['started_at' => 1433209822425]);
+        $file = $directory.'/overwrite-same-first-line.ndjson';
+        file_put_contents($file, implode(PHP_EOL, [
+            $firstLine,
+            $this->line([
+                'authenticated_entity' => [
+                    'consumer_id' => '22222222-2222-2222-2222-222222222222',
+                ],
+                'started_at' => 1433209823425,
+            ]),
+        ]));
+
+        $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
+
+        file_put_contents($file, implode(PHP_EOL, [
+            $firstLine,
+            $this->line([
+                'authenticated_entity' => [
+                    'consumer_id' => '88888888-8888-8888-8888-888888888888',
+                ],
+                'started_at' => 1433209824425,
+            ]),
+        ]));
+
+        $this->artisan('logs:process', ['path' => $file])->assertSuccessful();
+
+        $this->assertDatabaseHas('processed_logs', [
+            'consumer_id' => '88888888-8888-8888-8888-888888888888',
+            'line_number' => 2,
+        ]);
+        $this->assertDatabaseCount('processed_logs', 3);
+    }
+
+    public function test_it_rejects_path_traversal_for_log_file_path(): void
+    {
+        $this->artisan('logs:process', ['path' => '../logs.txt'])
+            ->expectsOutput('Path traversal is not allowed.')
+            ->assertFailed();
     }
 
     /**

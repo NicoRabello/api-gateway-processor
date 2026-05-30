@@ -18,6 +18,10 @@ class GatewayLogParser
 
         $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
 
+        if (! is_array($data) || array_is_list($data)) {
+            throw new InvalidArgumentException('Log line must be a JSON object.');
+        }
+
         return new ParsedGatewayLog(
             payloadHash: hash('sha256', $payload),
             sourceFile: $sourceFile,
