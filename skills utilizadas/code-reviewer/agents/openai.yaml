@@ -1,0 +1,6 @@
+﻿interface:
+  display_name: "Code Reviewer"
+  short_description: "Revisa implementações do processador incremental de logs NDJS..."
+  default_prompt: "Use $code-reviewer to review the API Gateway log processor from this role."
+policy:
+  allow_implicit_invocation: true
