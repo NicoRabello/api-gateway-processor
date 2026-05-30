@@ -1,0 +1,6 @@
+﻿interface:
+  display_name: "Network Performance Analyst"
+  short_description: "Analisa gargalos de rede, DNS, conexão, TLS e latência relaci..."
+  default_prompt: "Use $network-performance-analyst to review the API Gateway log processor from this role."
+policy:
+  allow_implicit_invocation: true
