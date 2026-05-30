@@ -45,7 +45,7 @@ class ProcessedLogRepository
                 'client_ip' => $log->clientIp,
                 'started_at' => $log->startedAt,
                 'processed_at' => $processedAt,
-                'created_at' => $now,
+                'created_at' => $log->startedAt,
                 'updated_at' => $now,
             ],
             $logs,

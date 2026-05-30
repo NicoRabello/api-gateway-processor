@@ -12,8 +12,10 @@ return new class extends Migration
             $table->id();
             $table->string('source_file_hash', 64)->unique();
             $table->string('first_line_hash', 64);
+            $table->string('processed_prefix_hash', 64)->default(hash('sha256', ''));
             $table->string('source_file', 1024);
             $table->unsignedBigInteger('last_processed_line')->default(0);
+            $table->unsignedBigInteger('last_processed_byte_offset')->default(0);
             $table->timestamps(3);
         });
     }

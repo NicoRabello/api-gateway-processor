@@ -37,6 +37,12 @@ tests/Unit
 
 ## Instalação com Docker
 
+Prepare o arquivo de ambiente, se ele ainda nao existir:
+
+```bash
+cp .env.example .env
+```
+
 Suba os containers:
 
 ```bash
@@ -69,8 +75,9 @@ O comando:
 - le o NDJSON linha a linha;
 - persiste registros validos em lotes para reduzir escritas no banco;
 - usa checkpoint por arquivo para pular linhas ja processadas em execucoes seguintes;
+- valida o prefixo ja processado para detectar truncamento ou sobrescrita do arquivo;
 - ignora linhas JSON invalidas sem parar todo o processamento;
-- grava `started_at` a partir do log;
+- grava `started_at` e `created_at` a partir do log;
 - grava `processed_at` no momento da insercao;
 - ignora duplicados pelo indice unico composto por arquivo, linha e hash do payload;
 - mostra contadores de processados, inseridos, ignorados e invalidos.
@@ -139,7 +146,7 @@ Campos principais:
 - `source_file_hash`
 - `source_file`
 - `line_number`
-- `created_at`
+- `created_at` (mesmo instante de `started_at`)
 - `updated_at`
 
 Tabela de controle incremental: `import_checkpoints`.
@@ -147,8 +154,10 @@ Tabela de controle incremental: `import_checkpoints`.
 Campos principais:
 
 - `source_file_hash`
+- `processed_prefix_hash`
 - `source_file`
 - `last_processed_line`
+- `last_processed_byte_offset`
 - `created_at`
 - `updated_at`
 
@@ -166,7 +175,7 @@ Indices:
 
 ### Processamento incremental
 
-O arquivo e processado com `SplFileObject`, uma linha por vez. O sistema nao usa `file_get_contents()` para carregar o arquivo inteiro. Registros validos sao persistidos em lotes, e a tabela `import_checkpoints` armazena a ultima linha confirmada por arquivo para pular linhas ja processadas em execucoes seguintes.
+O arquivo e processado com `SplFileObject`, uma linha por vez. O sistema nao usa `file_get_contents()` para carregar o arquivo inteiro. Registros validos sao persistidos em lotes, e a tabela `import_checkpoints` armazena a ultima linha confirmada, o offset em bytes e o hash do prefixo processado por arquivo para retomar execucoes seguintes. Se o arquivo for truncado ou sobrescrito mantendo o mesmo nome, o prefixo deixa de bater e o processamento reinicia do comeco.
 
 ### Duplicidade
 
@@ -216,11 +225,3 @@ docker compose build app
 docker compose run --rm --user root app composer install
 docker compose up -d
 ```
-
-## Melhorias Futuras
-
-- Checkpoint por offset para retomar arquivos parcialmente processados com menos releitura.
-- Inserts em lote para cargas muito grandes.
-- Filtros por periodo nos relatorios.
-- Agendamento automatico do processamento.
-- Observabilidade com metricas de tempo e throughput.

@@ -3,49 +3,46 @@
 namespace App\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use stdClass;
 
 class ImportCheckpointRepository
 {
-    public function lastProcessedLine(string $sourceFileHash, string $firstLineHash): int
+    public function find(string $sourceFileHash, string $firstLineHash): ?stdClass
     {
         $checkpoint = DB::table('import_checkpoints')
             ->where('source_file_hash', $sourceFileHash)
-            ->first(['first_line_hash', 'last_processed_line']);
+            ->first(['first_line_hash', 'last_processed_line', 'last_processed_byte_offset', 'processed_prefix_hash']);
 
         if ($checkpoint === null || $checkpoint->first_line_hash !== $firstLineHash) {
-            return 0;
+            return null;
         }
 
-        return (int) $checkpoint->last_processed_line;
+        return $checkpoint;
     }
 
-    public function update(string $sourceFileHash, string $firstLineHash, string $sourceFile, int $lineNumber): void
-    {
+    public function update(
+        string $sourceFileHash,
+        string $firstLineHash,
+        string $processedPrefixHash,
+        string $sourceFile,
+        int $lineNumber,
+        int $byteOffset,
+    ): void {
         $now = now();
-        $exists = DB::table('import_checkpoints')
-            ->where('source_file_hash', $sourceFileHash)
-            ->exists();
 
-        if ($exists) {
-            DB::table('import_checkpoints')
-                ->where('source_file_hash', $sourceFileHash)
-                ->update([
-                    'first_line_hash' => $firstLineHash,
-                    'source_file' => $sourceFile,
-                    'last_processed_line' => $lineNumber,
-                    'updated_at' => $now,
-                ]);
-
-            return;
-        }
-
-        DB::table('import_checkpoints')->insert([
-            'source_file_hash' => $sourceFileHash,
-            'first_line_hash' => $firstLineHash,
-            'source_file' => $sourceFile,
-            'last_processed_line' => $lineNumber,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('import_checkpoints')->upsert(
+            [[
+                'source_file_hash' => $sourceFileHash,
+                'first_line_hash' => $firstLineHash,
+                'processed_prefix_hash' => $processedPrefixHash,
+                'source_file' => $sourceFile,
+                'last_processed_line' => $lineNumber,
+                'last_processed_byte_offset' => $byteOffset,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]],
+            ['source_file_hash'],
+            ['first_line_hash', 'processed_prefix_hash', 'source_file', 'last_processed_line', 'last_processed_byte_offset', 'updated_at'],
+        );
     }
 }

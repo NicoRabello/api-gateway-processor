@@ -31,6 +31,20 @@ class GatewayLogParserTest extends TestCase
         (new GatewayLogParser)->parse('{invalid-json');
     }
 
+    public function test_it_rejects_valid_json_that_is_not_an_object(): void
+    {
+        $parser = new GatewayLogParser;
+
+        foreach (['null', '123', '"text"', '[]'] as $line) {
+            try {
+                $parser->parse($line);
+                $this->fail("Expected InvalidArgumentException for {$line}.");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_it_allows_missing_fields(): void
     {
         $log = (new GatewayLogParser)->parse('{"started_at":1433209822425}');
