@@ -30,6 +30,9 @@ class ProcessLogsCommand extends Command
         $this->line("Inserted records: {$result->inserted}");
         $this->line("Ignored/skipped records: {$result->ignored}");
         $this->line("Invalid lines: {$result->invalid}");
+        $this->line('Duration seconds: '.number_format($result->durationSeconds, 4, '.', ''));
+        $this->line('Throughput lines/sec: '.number_format($result->throughputPerSecond(), 2, '.', ''));
+        $this->line('Peak memory MB: '.number_format($result->peakMemoryBytes / 1024 / 1024, 2, '.', ''));
 
         return self::SUCCESS;
     }
